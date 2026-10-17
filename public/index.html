@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stranger 1v1 Chat</title>
+    <!-- Add Socket.io Client Library -->
+    <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
             --bg-color: #000000;
@@ -14,9 +16,7 @@
             --success-color: #2ea44f;
             --danger-color: #cb2431;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -27,8 +27,6 @@
             align-items: center;
             overflow: hidden;
         }
-
-        /* LOGIN INTERFACE SCREEN */
         #auth-screen {
             display: flex;
             flex-direction: column;
@@ -39,7 +37,6 @@
             border-radius: 12px;
             border: 1px solid var(--border-color);
         }
-
         .auth-btn {
             width: 260px;
             padding: 12px;
@@ -49,18 +46,14 @@
             border: none;
             border-radius: 6px;
         }
-
         .google-btn { background-color: #ffffff; color: #000000; }
         .guest-btn { background-color: var(--accent-color); color: #ffffff; }
-
-        /* APPLICATION PANEL GRID */
         #app-screen {
             display: none;
             width: 100vw;
             height: 100vh;
             grid-template-columns: 280px 1fr 300px;
         }
-
         .sidebar, .right-bar {
             background-color: #0a0a0a;
             border-right: 1px solid var(--border-color);
@@ -68,32 +61,28 @@
             flex-direction: column;
         }
         .right-bar { border-right: none; border-left: 1px solid var(--border-color); }
-
         .section-header {
             padding: 15px;
             font-weight: bold;
             border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }
-
         .chat-area { display: flex; flex-direction: column; background-color: var(--bg-color); }
         .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        
         .message { max-width: 70%; padding: 10px 14px; border-radius: 8px; }
         .msg-me { align-self: flex-end; background-color: var(--accent-color); }
         .msg-them { align-self: flex-start; background-color: #262626; }
-        .msg-system { align-self: center; background-color: #222; color: #aaa; font-size: 13px; }
-
+        .msg-system { align-self: center; background-color: #222; color: #aaa; font-size: 13px; text-align: center; width: 90%; border-radius: 4px; padding: 4px; }
         .chat-input-area { padding: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; }
         .chat-input { flex: 1; background-color: #161616; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; color: #fff; }
-        
         .action-btn { padding: 6px 12px; border-radius: 4px; color: white; cursor: pointer; border: none; font-size: 12px; }
         .btn-add { background-color: var(--accent-color); }
         .btn-accept { background-color: var(--success-color); }
         .btn-deny { background-color: var(--danger-color); }
-        
         .hidden { display: none !important; }
+        .friend-item { padding: 10px; background: #121212; border: 1px solid #333; margin-bottom: 8px; border-radius: 6px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -114,13 +103,13 @@
 
         <div class="chat-area">
             <div class="section-header">
-                <span id="chat-title">Finding someone...</span>
-                <button class="action-btn btn-add hidden" id="add-friend-btn" onclick="sendReq()">Add Friend</button>
+                <span id="chat-title">Press Next to find a match...</span>
+                <button class="action-btn btn-add hidden" id="add-friend-btn" onclick="sendFriendRequest()">Add Friend</button>
             </div>
             <div class="chat-messages" id="msg-container"></div>
             <div class="chat-input-area">
-                <button class="action-btn btn-deny" onclick="nextMatch()">Next</button>
-                <input type="text" class="chat-input" id="msg-input" placeholder="Type a message...">
+                <button class="action-btn btn-deny" onclick="findNewMatch()">Next</button>
+                <input type="text" class="chat-input" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMsg()">
                 <button class="action-btn btn-add" style="padding:0 20px" onclick="sendMsg()">Send</button>
             </div>
         </div>
@@ -132,77 +121,114 @@
     </div>
 
     <script>
-        let user = null, stranger = null, friends = [], requests = [];
-        
+        let socket;
+        let myName = "";
+        let currentPeerId = null;
+        let friends = [];
+        let incomingRequests = [];
+
         function initApp(name) {
-            user = name;
+            myName = name;
+            socket = io(); // Connects to the server hosting the files
+
             document.getElementById('auth-screen').classList.add('hidden');
-            const main = document.getElementById('app-screen');
-            main.style.display = 'grid';
-            nextMatch();
+            document.getElementById('app-screen').style.display = 'grid';
+
+            // Register username with server
+            socket.emit('register_user', { name: myName });
+
+            // Listen for matchmaking updates
+            socket.on('waiting', (data) => {
+                document.getElementById('chat-title').innerText = data.message;
+                document.getElementById('add-friend-btn').classList.add('hidden');
+                currentPeerId = null;
+            });
+
+            socket.on('matched', (data) => {
+                currentPeerId = data.peerId;
+                document.getElementById('chat-title').innerText = `Chatting with: ${data.name}`;
+                document.getElementById('msg-container').innerHTML = `<div class="message msg-system">Connected to ${data.name}. Say hello!</div>`;
+                document.getElementById('add-friend-btn').classList.remove('hidden');
+            });
+
+            socket.on('peer_disconnected', () => {
+                document.getElementById('chat-title').innerText = "Stranger left the chat.";
+                document.getElementById('msg-container').innerHTML += `<div class="message msg-system">Stranger has disconnected.</div>`;
+                document.getElementById('add-friend-btn').classList.add('hidden');
+                currentPeerId = null;
+            });
+
+            // Listen for text messaging
+            socket.on('receive_message', (data) => {
+                appendMessage(data.text, 'msg-them');
+            });
+
+            // Listen for updates on system relationships
+            socket.on('incoming_friend_request', (data) => {
+                incomingRequests.push(data);
+                renderRequests();
+            });
+
+            socket.on('friend_request_accepted', (data) => {
+                alert(`${data.name} accepted your friend request!`);
+                friends.push({ id: data.friendId, name: data.name });
+                renderFriends();
+            });
+
+            socket.on('friend_request_denied', (data) => {
+                console.log(`Friend request denied by ${data.fromName}`);
+            });
         }
 
-        function nextMatch() {
-            const pool = ["ShadowWanderer", "NeonVibes", "QuantumCoder", "SilentGhost"];
-            stranger = pool[Math.floor(Math.random()*pool.length)];
-            document.getElementById('chat-title').innerText = `Chatting with: ${stranger}`;
-            document.getElementById('msg-container').innerHTML = `<div class="message msg-system">Matched with ${stranger}</div>`;
-            document.getElementById('add-friend-btn').classList.remove('hidden');
+        function findNewMatch() {
+            if(socket) socket.emit('find_match');
         }
 
         function sendMsg() {
             const input = document.getElementById('msg-input');
-            if(!input.value.trim()) return;
-            
-            const msg = document.createElement('div');
-            msg.className = "message msg-me";
-            msg.innerText = input.value;
-            document.getElementById('msg-container').appendChild(msg);
+            const text = input.value.trim();
+            if(!text || !currentPeerId) return;
+
+            socket.emit('send_message', { text: text });
+            appendMessage(text, 'msg-me');
             input.value = "";
         }
 
-        function sendReq() {
-            alert("Friend request sent to " + stranger);
-            // Simulating an incoming mock friend request for layout demonstration
-            setTimeout(() => {
-                requests.push("Stranger_Alpha");
-                renderReqs();
-            }, 1000);
+        function appendMessage(text, className) {
+            const container = document.getElementById('msg-container');
+            const msg = document.createElement('div');
+            msg.className = `message ${className}`;
+            msg.innerText = text;
+            container.appendChild(msg);
+            container.scrollTop = container.scrollHeight;
         }
 
-        function renderReqs() {
-            const box = document.getElementById('requests-list');
-            box.innerHTML = requests.map((r, i) => `
-                <div style="display:flex; justify-content:space-between; margin-bottom:10px; background:#111; padding:10px; border-radius:6px;">
-                    <span>${r}</span>
-                    <div>
-                        <button class="action-btn btn-accept" onclick="accept(${i})">✓</button>
-                        <button class="action-btn btn-deny" onclick="deny(${i})">✗</button>
-                    </div>
+        function sendFriendRequest() {
+            if(!currentPeerId) return;
+            socket.emit('send_friend_request');
+            alert("Friend request sent!");
+        }
+
+        function renderRequests() {
+            const container = document.getElementById('requests-list');
+            container.innerHTML = incomingRequests.map((req, index) => `
+                <div style="display:flex; justify-content:between; margin-bottom:10px; background:#111; padding:10px; border-radius:6px; align-items:center; gap: 10px;">
+                    <span style="flex:1;">${req.name}</span>
+                    <button class="action-btn btn-accept" onclick="handleRequestResponse(${index}, 'accept')">✓</button>
+                    <button class="action-btn btn-deny" onclick="handleRequestResponse(${index}, 'deny')">✗</button>
                 </div>
             `).join('');
         }
 
-        function accept(i) {
-            friends.push(requests[i]);
-            requests.splice(i, 1);
-            renderReqs();
-            renderFriends();
+        function handleRequestResponse(index, status) {
+            const request = incomingRequests[index];
+            socket.emit('respond_friend_request', { targetId: request.fromId, status: status });
+            
+            if(status === 'accept') {
+                friends.push({ id: request.fromId, name: request.name });
+                renderFriends();
+            }
+            incomingRequests.splice(index, 1);
+            renderRequests();
         }
 
-        function deny(i) {
-            requests.splice(i, 1);
-            renderReqs();
-        }
-
-        function renderFriends() {
-            const box = document.getElementById('friends-list');
-            box.innerHTML = friends.map(f => `
-                <div style="padding:12px; background:#121212; border:1px solid #333; margin-bottom:8px; border-radius:6px; cursor:pointer;">
-                    🟢 ${f} (Online Chat)
-                </div>
-            `).join('');
-        }
-    </script>
-</body>
-</html>
