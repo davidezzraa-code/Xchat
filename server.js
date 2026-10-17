@@ -118,10 +118,4 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`XChat active on port ${PORT}`));
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/xchat";
-
-mongoose.connect(MONGO_URI)
-  .then(() => console.log("MongoDB Connected Successfully to Render!"))
-  .catch((err) => {
-    console.error("Database connection failed:", err.message);
-    process.exit(1); // Force a clear error log trace inside Render logs
-  });
+ 
