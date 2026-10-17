@@ -75,7 +75,7 @@ io.on('connection', (socket) => {
             );
 
             if (matchIndex !== -1) {
-                const partner = globalMatchQueue.splice(matchIndex, 1)[0];
+                const partner = globalMatchQueue.splice(matchIndex, 1);
                 const roomName = `room_${userId}_${partner.userId}`;
 
                 socket.join(roomName);
