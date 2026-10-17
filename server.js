@@ -12,7 +12,6 @@ const io = new Server(server, { cors: { origin: "*" } });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Retrieve MongoDB URI from Render environment variables
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
@@ -20,7 +19,6 @@ if (!MONGO_URI) {
     process.exit(1);
 }
 
-// Connect to MongoDB with error catch logs
 mongoose.connect(MONGO_URI)
     .then(() => console.log("SUCCESS: Connected to MongoDB Atlas smoothly!"))
     .catch((err) => {
@@ -28,7 +26,6 @@ mongoose.connect(MONGO_URI)
         process.exit(1);
     });
 
-// --- AUTHENTICATION API ENDPOINTS ---
 app.post('/api/auth/guest', async (req, res) => {
     try {
         const guestName = `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
@@ -52,7 +49,6 @@ app.post('/api/auth/google-mock', async (req, res) => {
     }
 });
 
-// --- REAL-TIME CHAT & MATCHING CORE ---
 let globalMatchQueue = [];
 
 io.on('connection', (socket) => {
@@ -69,13 +65,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 1v1 Interest-Based Matchmaking Mechanism
     socket.on('start_matchmaking', async ({ userId, interests }) => {
         try {
             const cleanInterests = interests.map(i => i.trim().toLowerCase()).filter(i => i.length > 0);
             await User.findByIdAndUpdate(userId, { interests: cleanInterests });
 
-            // Check queue for matching interest tags
             const matchIndex = globalMatchQueue.findIndex(item => 
                 item.userId !== userId && item.interests.some(i => cleanInterests.includes(i))
             );
@@ -88,7 +82,6 @@ io.on('connection', (socket) => {
                 io.to(partner.socketId).emit('force_join_room', { roomName, partnerId: userId });
                 io.to(roomName).emit('match_success', { roomName, p1: userId, p2: partner.userId });
             } else {
-                // If no matching tags, add this user to the queue
                 globalMatchQueue = globalMatchQueue.filter(item => item.userId !== userId);
                 globalMatchQueue.push({ userId, socketId: socket.id, interests: cleanInterests });
                 socket.emit('waiting_for_match', "Scanning networks for matches...");
@@ -107,7 +100,6 @@ io.on('connection', (socket) => {
         socket.to(roomName).emit('receive_stranger_msg', { text, type });
     });
 
-    // Persistent Friends System Framework
     socket.on('send_friend_request', async ({ fromId, toId }) => {
         try {
             const target = await User.findById(toId);
@@ -125,7 +117,6 @@ io.on('connection', (socket) => {
     socket.on('respond_friend_request', async ({ userId, requesterId, accept }) => {
         try {
             if (accept) {
-                // Fixed Clean Mongoose Operators (addToSet and pull)
                 await User.findByIdAndUpdate(userId, { 
                     \(addToSet: { friends: requesterId },\)pull: { friendRequests: { from: requesterId } }
                 });
