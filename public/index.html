@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XChat - Premium Anonymous Experience</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body, html { height: 100%; background: #0f172a; color: #f8fafc; }
+        
+        /* Entrance Portal styling */
+        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
+        .auth-card { background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 400px; width: 90%; }
+        .auth-card h1 { font-size: 3rem; color: #38bdf8; margin-bottom: 25px; letter-spacing: 2px; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 12px 0; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+        .btn-google { background: #ea4335; color: white; }
+        .btn-guest { background: #64748b; color: white; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* Dashboard and chat panel layout grid */
+        #main-interface { display: none; grid-template-columns: 280px 1fr; height: 100%; }
+        
+        /* Sidebar container elements */
+        #sidebar { background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; padding: 15px; }
+        .profile-box { padding-bottom: 15px; border-bottom: 1px solid #334155; margin-bottom: 15px; }
+        .interest-input-group { margin-bottom: 20px; }
+        .interest-input-group input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; }
+        .friends-list-area { flex: 1; overflow-y: auto; }
+        .friend-item { padding: 8px; background: #334155; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;}
+        
+        /* Lower Left matching control zone */
+        .match-control-zone { padding-top: 15px; border-top: 1px solid #334155; }
+        .btn-match { background: #0284c7; color: white; width: 100%; }
+
+        /* Workspace View Windows */
+        #chat-workspace { display: flex; flex-direction: column; height: 100%; background: #0f172a; padding: 20px; }
+        .chat-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 15px; border-bottom: 1px solid #334155; }
+        #message-viewport { flex: 1; overflow-y: auto; padding: 15px 0; display: flex; flex-direction: column; gap: 10px; }
+        .msg { padding: 10px 14px; border-radius: 8px; max-width: 65%; word-wrap: break-word; }
+        .msg.sent { background: #0284c7; align-self: flex-end; }
+        .msg.received { background: #334155; align-self: flex-start; }
+        .msg.system { background: transparent; color: #94a3b8; align-self: center; font-style: italic; }
+        .chat-input-bar { display: flex; gap: 10px; }
+        .chat-input-bar input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- Portal Authentication Gateway View Element -->
+    <div id="auth-screen">
+        <div class="auth-card">
+            <h1>XCHAT</h1>
+            <button class="btn btn-google" onclick="loginWithGoogleMock()">Sign in with Google</button>
+            <button class="btn btn-guest" onclick="loginAsGuest()">Play as Guest</button>
+        </div>
+    </div>
+
+    <!-- Main Workspace Application View Element -->
+    <div id="main-interface">
+        <div id="sidebar">
+            <div class="profile-box">
+                <h3 id="display-username">Loading Identity...</h3>
+            </div>
+            
+            <div class="interest-input-group">
+                <label style="font-size: 0.8rem; color:#94a3b8;">My Interests (comma separated):</label>
+                <input type="text" id="interests-field" placeholder="e.g. anime, gaming, music">
+            </div>
+
+            <div class="friends-list-area">
+                <h4 style="font-size: 0.85rem; color:#94a3b8; margin-bottom: 8px;">FRIENDS CHAT PANEL</h4>
+                <div id="friends-box"></div>
+            </div>
+
+            <div class="match-control-zone">
+                <button class="btn btn-match" id="match-trigger-btn" onclick="triggerMatchmaking()">START MATCH</button>
+            </div>
+        </div>
+
+        <div id="chat-workspace">
+            <div class="chat-header">
+                <h2 id="chat-partner-title">Stranger Room</h2>
+                <button class="btn id-add-friend-btn" id="add-friend-action" style="width:auto; margin:0; display:none; background:#22c55e; color:white; padding:6px 12px; font-size:0.85rem;">Add Friend</button>
+            </div>
+            <div id="message-viewport">
+                <div class="msg system">Configure tags and tap Start Match below to initiate 1v1 data streams.</div>
+            </div>
+            <div class="chat-input-bar">
+                <input type="text" id="chat-input-field" placeholder="Type text packet or asset link here..." disabled>
+                <button class="btn" style="width:auto; margin:0; background:#0284c7; color:white;" onclick="dispatchMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let activeUserSession = null;
+        let currentActiveRoom = null;
+        let activeStrangerPartnerId = null;
+
+        async function loginAsGuest() {
+            const res = await fetch('/api/auth/guest', { method: 'POST' });
+            const data = await res.json();
+            if(data.success) initializeUserWorkspace(data.user);
+        }
+
+        async function loginWithGoogleMock() {
+            // Simplified Google flow mock logic passing baseline tokens directly
+            const mockPayload = { googleId: "g_" + Math.random().toString(36).substr(2, 9), name: "GoogleUser_" + Math.floor(Math.random()*100) };
+            const res = await fetch('/api/auth/google-mock', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(mockPayload)
+            });
+            const data = await res.json();
+            if(data.success) initializeUserWorkspace(data.user);
+        }
+
+        function initializeUserWorkspace(user) {
+            activeUserSession = user;
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('main-interface').style.display = 'grid';
+            document.getElementById('display-username').textContent = user.username;
+            
+            socket.emit('set_active_user', user._id);
+        }
+
+        function triggerMatchmaking() {
+            const interestsRaw = document.getElementById('interests-field').value.split(',');
+            document.getElementById('message-viewport').innerHTML = '<div class="msg system">Searching for matching client patterns...</div>';
+            
+            socket.emit('start_matchmaking', {
+                userId: activeUserSession._id,
+                interests: interestsRaw
+            });
+        }
+
+        function dispatchMessage() {
+            const text = document.getElementById('chat-input-field').value.trim();
+            if(!text || !currentActiveRoom) return;
+
+            let type = 'text';
+            if (text.match(/\.(jpeg|jpg|gif|png)$/) != null || text.startsWith('data:image')) {
+                type = 'image';
+            }
+
+            socket.emit('send_stranger_msg', { roomName: currentActiveRoom, text, type });
+            renderLocalBubble({ text, type }, 'sent');
+            document.getElementById('chat-input-field').value = '';
+        }
+
+        function renderLocalBubble(data, alignment) {
+            const container = document.getElementById('message-viewport');
+            const element = document.createElement('div');
+            element.classList.add('msg', alignment);
+
+            if(data.type === 'image') {
+                element.innerHTML = `<img src="${data.text}" style="max-width:100%; border-radius:4px;"/>`;
+            } else {
+                element.textContent = data.text;
+            }
+            container.appendChild(element);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // --- NETWORK EVENT ROUTERS ---
+        socket.on('force_join_room', ({ roomName, partnerId }) => {
+            socket.emit('join_assigned_room', roomName);
+        });
+
+        socket.on('match_success', ({ roomName, p1, p2 }) => {
+            currentActiveRoom = roomName;
+            activeStrangerPartnerId = (activeUserSession._id === p1) ? p2 : p1;
+            
+            document.getElementById('message-viewport').innerHTML = '<div class="msg system">Connected with a matching partner. Connection online.</div>';
+            document.getElementById('chat-input-field').disabled = false;
+            
+            const addFriendBtn = document.getElementById('add-friend-action');
+            addFriendBtn.style.display = 'block';
+            addFriendBtn.onclick = () => {
+                socket.emit('send_friend_request', { fromId: activeUserSession._id, toId: activeStrangerPartnerId });
+                addFriendBtn.innerText = "Requested";
+                addFriendBtn.disabled = true;
+            };
+        });
+
+        socket.on('receive_stranger_msg', (data) => {
+            renderLocalBubble(data, 'received');
+        });
+
+        socket.on('incoming_friend_request', ({ fromId }) => {
+            if(confirm("Incoming Friend Request detected. Establish persistent bond?")) {
+                socket.emit('respond_friend_request', { userId: activeUserSession._id, requesterId: fromId, accept: true });
+            } else {
