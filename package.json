@@ -1,0 +1,14 @@
+{
+  "name": "xchat-advanced",
+  "version": "1.0.0",
+  "description": "XChat - 1v1 Random Interest Match & Friends System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "mongoose": "^8.7.0",
+    "socket.io": "^4.8.0"
+  }
+}
