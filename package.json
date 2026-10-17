@@ -1,14 +1,23 @@
 {
-  "name": "xchat-advanced",
+  "name": "stranger-1v1-chat-server",
   "version": "1.0.0",
-  "description": "XChat - 1v1 Random Interest Match & Friends System",
+  "description": "Real-time 1v1 stranger chat backend with Google/Guest authentication routing and custom friend states.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
+  "keywords": [
+    "websocket",
+    "socket.io",
+    "express",
+    "realtime-chat",
+    "matchmaking"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "express": "^4.21.0",
-    "mongoose": "^8.7.0",
-    "socket.io": "^4.8.0"
+    "express": "^4.21.1",
+    "socket.io": "^4.8.1"
   }
 }
